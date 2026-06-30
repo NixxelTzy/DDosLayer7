@@ -412,7 +412,7 @@ process.on('message', ({ targetUrl, duration }) => {
             stats.success = 0;
             stats.failed = 0;
         }
-    }, 1000);
+    }, 1500);
 
     const totalDurationMs = duration * 1000;
     const phaseDurationMs = totalDurationMs / allAttackModes.length;
