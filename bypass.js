@@ -1,4 +1,4 @@
-const TlsClient = require('tls-client-ng');
+const TlsClient = require('tls-client');
 const { CookieJar } = require('tough-cookie');
 const url = require('url');
 const crypto = require('crypto');
