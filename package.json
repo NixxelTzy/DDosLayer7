@@ -4,10 +4,13 @@
   "description": "Bot Telegram untuk menjalankan tugas.",
   "main": "bot.js",
   "scripts": {
-    "start": "node bot.js"
+    "start": "node bot.js"  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
-    "node-telegram-bot-api": "^0.66.0"
+    "node-telegram-bot-api": "^0.66.0",
+    "request": "^2.88.2"
   },
   "author": "",
   "license": "ISC"
